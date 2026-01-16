@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
+/*
+I declare that this code was written by me.
+I will not copy or allow others to copy my code.
+I understand that copying code is considered as plagiarism.
 
+Student Name:Arut
+Student ID:24027003
+Class:
+Date created:
+*/
 contract EscrowView {
 
     enum OrderStatus { Locked, Shipped, Delivered, Disputed }
