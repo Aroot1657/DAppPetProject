@@ -79,4 +79,36 @@ abstract contract EscrowPayment {
         Escrow storage escrow = escrows[orderId];
         return (escrow.buyer, escrow.seller, escrow.amount, escrow.status);
     }
+
+    // =====================================================
+    // PLATFORM FEE LOGIC – CONTRIBUTED BY XU MANNI
+    // =====================================================
+
+    // Platform fee in basis points (e.g. 200 = 2%)
+    uint256 public platformFeeBP = 200;
+
+    // Accumulated platform earnings
+    uint256 public platformBalance;
+
+    // Allows platform owner to update fee percentage
+    function setPlatformFee(uint256 _feeBP) external onlyOwner {
+        require(_feeBP <= 1000, "Fee too high");
+        platformFeeBP = _feeBP;
+    }
+
+    // Calculates platform fee for a given transaction amount
+    function calculatePlatformFee(uint256 amount) public view returns (uint256) {
+        return (amount * platformFeeBP) / 10000;
+    }
+
+    // Allows platform owner to withdraw accumulated platform fees
+    function withdrawPlatformFees() external onlyOwner {
+        require(platformBalance > 0, "No platform fees");
+
+        uint256 amount = platformBalance;
+        platformBalance = 0;
+
+        bool success = usdc.transfer(owner, amount);
+        require(success, "Platform withdrawal failed");
+    }
 }
