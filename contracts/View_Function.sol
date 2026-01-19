@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 /*
 I declare that this code was written by me.
@@ -12,9 +12,7 @@ Class: C372-003
 Date created: 16/01/2026
 */
 
-contract EscrowView {
-
-    // Matches OnlineStoreDisputes OrderStatus
+interface IOnlineStoreDisputes {
     enum OrderStatus {
         None,
         Paid,
@@ -22,13 +20,26 @@ contract EscrowView {
         Resolved
     }
 
-    struct OrderView {
-        OrderStatus status;
-        uint256 escrowAmount; // USDC amount locked in escrow
-    }
+    function orders(uint256 orderId)
+        external
+        view
+        returns (
+            address buyer,
+            address seller,
+            uint256 amount,
+            OrderStatus status,
+            bool payoutDone
+        );
+}
 
-    // orderId => order view info
-    mapping(uint256 => OrderView) public orders;
+contract EscrowView {
+
+    IOnlineStoreDisputes public disputes;
+
+    constructor(address disputesAddress) {
+        require(disputesAddress != address(0), "Invalid disputes address");
+        disputes = IOnlineStoreDisputes(disputesAddress);
+    }
 
     // ---------------------------------
     // VIEW (READ-ONLY) FUNCTIONS
@@ -38,9 +49,10 @@ contract EscrowView {
     function getOrderStatus(uint256 orderId)
         external
         view
-        returns (OrderStatus)
+        returns (IOnlineStoreDisputes.OrderStatus)
     {
-        return orders[orderId].status;
+        (, , , IOnlineStoreDisputes.OrderStatus status, ) = disputes.orders(orderId);
+        return status;
     }
 
     // Returns escrowed USDC amount for the order
@@ -49,18 +61,7 @@ contract EscrowView {
         view
         returns (uint256)
     {
-        return orders[orderId].escrowAmount;
-    }
-
-    // ---------------------------------
-    // OPTIONAL: helper for demo/testing
-    // (would be removed in production)
-    // ---------------------------------
-    function _setOrder(
-        uint256 orderId,
-        OrderStatus status,
-        uint256 amount
-    ) external {
-        orders[orderId] = OrderView(status, amount);
+        (, , uint256 amount, , ) = disputes.orders(orderId);
+        return amount;
     }
 }

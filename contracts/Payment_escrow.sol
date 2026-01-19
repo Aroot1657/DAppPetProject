@@ -10,15 +10,11 @@ Date created: 16/01/2026
 */
 
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
-interface IERC20 {
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-}
+import "./IERC20.sol";
 
-contract EscrowPayment {
-    address public owner;
+abstract contract EscrowPayment {
     IERC20 public usdc;
 
     enum EscrowStatus { None, Locked, Released, Refunded }
@@ -31,32 +27,27 @@ contract EscrowPayment {
     }
 
     // Mapping of orderId to Escrow struct stored in permanent blockchain storage
-    mapping(string => Escrow) public escrows;
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not contract owner");
-        _;
-    }
+    mapping(uint256 => Escrow) public escrows;
 
     constructor(address usdcAddress) {
         require(usdcAddress != address(0), "Invalid USDC address");
         usdc = IERC20(usdcAddress);
-        owner = msg.sender;
     }
 
     // Locks USDC from buyer into escrow
-    function lockEscrow(string memory orderId, address seller, uint256 amount) external {
+    function _lockEscrow(uint256 orderId, address buyer, address seller, uint256 amount) internal {
+        require(buyer != address(0), "Invalid buyer address");
         require(seller != address(0), "Invalid seller address");
         require(amount > 0, "Amount must be greater than 0");
 
         Escrow storage escrow = escrows[orderId];
         require(escrow.status == EscrowStatus.None, "Escrow already exists");
 
-        bool success = usdc.transferFrom(msg.sender, address(this), amount);
+        bool success = usdc.transferFrom(buyer, address(this), amount);
         require(success, "USDC transfer failed");
 
         escrows[orderId] = Escrow({
-            buyer: msg.sender,
+            buyer: buyer,
             seller: seller,
             amount: amount,
             status: EscrowStatus.Locked
@@ -64,7 +55,7 @@ contract EscrowPayment {
     }
 
     // Releases funds to seller after confirmation
-    function releaseEscrow(string memory orderId) external onlyOwner {
+    function _releaseEscrow(uint256 orderId) internal {
         Escrow storage escrow = escrows[orderId];
         require(escrow.status == EscrowStatus.Locked, "Escrow not locked");
 
@@ -74,7 +65,7 @@ contract EscrowPayment {
     }
 
     // Refunds buyer if necessary
-    function refundEscrow(string memory orderId) external onlyOwner {
+    function _refundEscrow(uint256 orderId) internal {
         Escrow storage escrow = escrows[orderId];
         require(escrow.status == EscrowStatus.Locked, "Escrow not locked");
 
@@ -84,7 +75,7 @@ contract EscrowPayment {
     }
 
     // Read-only: returns full escrow info
-    function getEscrow(string memory orderId) external view returns (address, address, uint256, EscrowStatus) {
+    function getEscrow(uint256 orderId) external view returns (address, address, uint256, EscrowStatus) {
         Escrow storage escrow = escrows[orderId];
         return (escrow.buyer, escrow.seller, escrow.amount, escrow.status);
     }

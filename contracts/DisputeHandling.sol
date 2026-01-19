@@ -10,23 +10,16 @@ Date created: 16/01/2026
 */
 
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
-interface IERC20 {
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-}
+import "./Payment_escrow.sol";
 
-contract OnlineStoreDisputes {
-    // USDC token contract
-    IERC20 public usdc;
+contract OnlineStoreDisputes is EscrowPayment {
 
     // Who can resolve disputes
     address public arbitrator;
 
-    constructor(address usdcAddress) {
-        require(usdcAddress != address(0), "Invalid USDC address");
-        usdc = IERC20(usdcAddress);
+    constructor(address usdcAddress) EscrowPayment(usdcAddress) {
         arbitrator = msg.sender;
     }
 
@@ -71,6 +64,7 @@ contract OnlineStoreDisputes {
     event OrderCreated(uint256 indexed orderId, address indexed buyer, address indexed seller, uint256 amount);
     event DisputeRaised(uint256 indexed orderId, address indexed openedBy, string reason);
     event DisputeResolved(uint256 indexed orderId, DisputeOutcome outcome);
+    event OrderCompleted(uint256 indexed orderId);
 
     /*
       Buyer creates order AND locks USDC into escrow in one step.
@@ -82,12 +76,10 @@ contract OnlineStoreDisputes {
         require(seller != address(0), "Invalid seller");
         require(amount > 0, "Amount must be > 0");
 
-        // Pull USDC from buyer into this contract (escrow)
-        bool ok = usdc.transferFrom(msg.sender, address(this), amount);
-        require(ok, "USDC transferFrom failed");
-
         uint256 orderId = nextOrderId;
         nextOrderId = nextOrderId + 1;
+
+        _lockEscrow(orderId, msg.sender, seller, amount);
 
         orders[orderId] = Order(
             msg.sender,
@@ -145,21 +137,31 @@ contract OnlineStoreDisputes {
         order.status = OrderStatus.Resolved;
         order.payoutDone = true;
 
-        // Payout using USDC transfer
-        bool okBuyer = true;
-        bool okSeller = true;
-
         if (outcome == DisputeOutcome.RefundBuyer) {
-            okBuyer = usdc.transfer(order.buyer, order.amount);
-            require(okBuyer, "USDC refund failed");
+            _refundEscrow(orderId);
         }
 
         if (outcome == DisputeOutcome.ReleaseToSeller) {
-            okSeller = usdc.transfer(order.seller, order.amount);
-            require(okSeller, "USDC release failed");
+            _releaseEscrow(orderId);
         }
 
         emit DisputeResolved(orderId, outcome);
+    }
+
+    // Buyer confirms successful delivery; releases escrow to seller.
+    function completeOrder(uint256 orderId) public {
+        Order storage order = orders[orderId];
+
+        require(msg.sender == order.buyer, "Only buyer can complete");
+        require(order.status == OrderStatus.Paid, "Order not in Paid state");
+        require(disputes[orderId].exists == false, "Dispute already exists");
+        require(order.payoutDone == false, "Payout already done");
+
+        order.status = OrderStatus.Resolved;
+        order.payoutDone = true;
+
+        _releaseEscrow(orderId);
+        emit OrderCompleted(orderId);
     }
 
     function canRaiseDispute(uint256 orderId, address user) public view returns (bool) {
